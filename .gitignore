@@ -1,0 +1,16 @@
+# Données lourdes (Simulation)
+data/
+*.npy
+*.csv
+
+# Cache Python (Fichiers temporaires inutiles)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Système (Mac)
+.DS_Store
+
+# Environnement virtuel
+venv/
+.env
