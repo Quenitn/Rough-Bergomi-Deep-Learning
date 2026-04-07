@@ -4,46 +4,53 @@ from src.model.rough_bergomi import RoughBergomi
 from src.simulation.hybrid_scheme import HybridScheme
 from src.utils.black_scholes import implied_vol
 
-# --- CONFIGURATION ---
-N_SAMPLES = 100  # On commence petit (change à 68000 plus tard)
-N_PATHS = 10000  # Précision pour chaque point
+N_SAMPLES = 100 # Teste avec 100 d'abord
+N_PATHS = 30000 # On monte un peu en précision
 SAVE_PATH = "data/"
 
 def generate():
-    print(f"--- Lancement de la génération ({N_SAMPLES} échantillons) ---")
-    
     model = RoughBergomi()
+    # On définit les grilles depuis le modèle
+    maturities = model.maturities # [0.1, 0.3, ..., 2.0] (8 points)
+    strikes = model.strikes       # [0.5, ..., 1.5] (11 points)
+    
     simulator = HybridScheme(model, n_paths=N_PATHS)
-    
-    # 1. Tirage des paramètres (X)
     X = model.sample_parameters(n_samples=N_SAMPLES)
-    
-    # 2. Préparation du tableau de sortie (Y) 
-    # 8 maturités * 11 strikes = 88 points
-    Y = np.zeros((N_SAMPLES, 88))
-    
+    Y = np.zeros((N_SAMPLES, len(maturities) * len(strikes)))
+
+    print("--- Début de la génération réelle ---")
+
     for i in range(N_SAMPLES):
-        if i % 10 == 0:
-            print(f"Progression : {i}/{N_SAMPLES}...")
-            
-        # Simulation des prix pour ce jeu de paramètres
+        # 1. Simuler les chemins pour ce jeu de paramètres
         prices, _ = simulator.simulate_paths(X[i])
         
-        # Calcul du prix moyen final (Monte Carlo)
-        final_prices = np.mean(prices[:, -1]) # Simplifié pour le test
+        # 2. Calculer la nappe de vol pour chaque couple (T, K)
+        vol_surface = []
+        for t_idx, T in enumerate(maturities):
+            # On récupère les prix à l'instant T (la colonne correspondante)
+            # Attention : il faut mapper les pas de temps du simulateur aux maturités
+            step_idx = int(T * (simulator.n_steps / maturities[-1])) - 1
+            S_at_T = prices[:, step_idx]
+            S0 = 1.0 # Par convention dans ton modèle
+            
+            for K in strikes:
+                # Prix de l'option Call (Moyenne des payoffs)
+                payoff = np.maximum(S_at_T - K, 0)
+                mkt_price = np.mean(payoff)
+                
+                # Conversion en Vol Implicite
+                iv = implied_vol(mkt_price, S0, K, T, r=0.0)
+                vol_surface.append(iv)
         
-        # TODO: Ici on calculera les 88 points avec une boucle sur la grille
-        # Pour l'instant on met une valeur fictive pour tester la sauvegarde
-        Y[i, :] = np.random.random(88) 
+        Y[i, :] = np.array(vol_surface)
+        
+        if i % 5 == 0:
+            print(f"Échantillon {i}/{N_SAMPLES} généré...")
 
-    # 3. Sauvegarde
-    if not os.path.exists(SAVE_PATH):
-        os.makedirs(SAVE_PATH)
-        
+    # Sauvegarde
     np.save(os.path.join(SAVE_PATH, "X_params.npy"), X)
     np.save(os.path.join(SAVE_PATH, "Y_vols.npy"), Y)
-    
-    print(f"--- Terminé ! Fichiers sauvegardés dans {SAVE_PATH} ---")
+    print("Fichiers sauvegardés. Prêt pour le Deep Learning !")
 
 if __name__ == "__main__":
     generate()
