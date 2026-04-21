@@ -1,56 +1,52 @@
-import numpy as np
-import os
-from src.model.rough_bergomi import RoughBergomi
-from src.simulation.hybrid_scheme import HybridScheme
-from src.utils.black_scholes import implied_vol
+"""
+Script CLI pour generer le dataset baseline. Appelle le pipeline
+centralise dans src/utils/pipeline.py.
 
-N_SAMPLES = 100 # Teste avec 100 d'abord
-N_PATHS = 30000 # On monte un peu en précision
+Usage : python generate_data.py
+"""
+
+import os
+import numpy as np
+
+from src.model.rough_bergomi import RoughBergomi
+from src.utils.pipeline import generate_dataset
+from src.utils.normalization import normalize_inputs, normalize_outputs
+
+# --- CONFIGURATION ---
+N_SAMPLES = 1000    # Nombre de surfaces a generer (test rapide)
+N_PATHS = 10000     # Chemins Monte Carlo par surface
+N_STEPS = 100       # Pas de discretisation temporelle
 SAVE_PATH = "data/"
 
+# Valeurs recommandees pour le run final :
+# N_SAMPLES = 20000
+# N_PATHS = 30000
+
+
 def generate():
+    os.makedirs(SAVE_PATH, exist_ok=True)
+
+    print(f"--- Generation du dataset baseline ---")
+    print(f"N_SAMPLES = {N_SAMPLES}, N_PATHS = {N_PATHS}, N_STEPS = {N_STEPS}")
+
     model = RoughBergomi()
-    # On définit les grilles depuis le modèle
-    maturities = model.maturities # [0.1, 0.3, ..., 2.0] (8 points)
-    strikes = model.strikes       # [0.5, ..., 1.5] (11 points)
-    
-    simulator = HybridScheme(model, n_paths=N_PATHS)
-    X = model.sample_parameters(n_samples=N_SAMPLES)
-    Y = np.zeros((N_SAMPLES, len(maturities) * len(strikes)))
+    X, Y = generate_dataset(model, N_SAMPLES, n_paths=N_PATHS, n_steps=N_STEPS)
 
-    print("--- Début de la génération réelle ---")
+    # Sauvegarde des donnees brutes
+    np.save(os.path.join(SAVE_PATH, "X_params_raw.npy"), X)
+    np.save(os.path.join(SAVE_PATH, "Y_vols_raw.npy"), Y)
 
-    for i in range(N_SAMPLES):
-        # 1. Simuler les chemins pour ce jeu de paramètres
-        prices, _ = simulator.simulate_paths(X[i])
-        
-        # 2. Calculer la nappe de vol pour chaque couple (T, K)
-        vol_surface = []
-        for t_idx, T in enumerate(maturities):
-            # On récupère les prix à l'instant T (la colonne correspondante)
-            # Attention : il faut mapper les pas de temps du simulateur aux maturités
-            step_idx = int(T * (simulator.n_steps / maturities[-1])) - 1
-            S_at_T = prices[:, step_idx]
-            S0 = 1.0 # Par convention dans ton modèle
-            
-            for K in strikes:
-                # Prix de l'option Call (Moyenne des payoffs)
-                payoff = np.maximum(S_at_T - K, 0)
-                mkt_price = np.mean(payoff)
-                
-                # Conversion en Vol Implicite
-                iv = implied_vol(mkt_price, S0, K, T, r=0.0)
-                vol_surface.append(iv)
-        
-        Y[i, :] = np.array(vol_surface)
-        
-        if i % 5 == 0:
-            print(f"Échantillon {i}/{N_SAMPLES} généré...")
+    # Normalisation + sauvegarde
+    X_norm = normalize_inputs(X, model.bounds)
+    Y_norm, y_mean, y_std = normalize_outputs(Y, per_point=True)
 
-    # Sauvegarde
-    np.save(os.path.join(SAVE_PATH, "X_params.npy"), X)
-    np.save(os.path.join(SAVE_PATH, "Y_vols.npy"), Y)
-    print("Fichiers sauvegardés. Prêt pour le Deep Learning !")
+    np.save(os.path.join(SAVE_PATH, "X_params_norm.npy"), X_norm)
+    np.save(os.path.join(SAVE_PATH, "Y_vols_norm.npy"), Y_norm)
+    np.savez(os.path.join(SAVE_PATH, "norm_stats.npz"),
+             y_mean=y_mean, y_std=y_std)
+
+    print("Fichiers sauvegardes dans data/. Pret pour l'entrainement.")
+
 
 if __name__ == "__main__":
     generate()

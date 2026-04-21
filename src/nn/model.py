@@ -5,22 +5,23 @@ class VolatilityNet(nn.Module):
     def __init__(self, input_size=11, output_size=88):
         super(VolatilityNet, self).__init__()
         
-        # Architecture : 11 -> 512 -> 512 -> 512 -> 512 -> 88
+        # Architecture fidèle au papier (Section 3.2.1) :
+        # 11 -> 30 -> 30 -> 30 -> 30 -> 88 (~6800 paramètres)
+        # Activation ELU sur les couches cachées, linéaire en sortie (Section 4.1.1)
         self.network = nn.Sequential(
-            nn.Linear(input_size, 512),
-            nn.ELU(),  # ELU est souvent mieux que ReLU pour les surfaces de vol
-            
-            nn.Linear(512, 512),
+            nn.Linear(input_size, 30),
             nn.ELU(),
             
-            nn.Linear(512, 512),
+            nn.Linear(30, 30),
             nn.ELU(),
             
-            nn.Linear(512, 512),
+            nn.Linear(30, 30),
             nn.ELU(),
             
-            nn.Linear(512, output_size), # Sortie directe des 88 points
-            nn.ReLU()
+            nn.Linear(30, 30),
+            nn.ELU(),
+            
+            nn.Linear(30, output_size),  # Sortie linéaire (pas de ReLU)
         )
 
     def forward(self, x):

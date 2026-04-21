@@ -15,6 +15,24 @@ class HybridScheme:
         weights = (np.power(k, alpha + 1) - np.power(k - 1, alpha + 1)) / (alpha + 1)
         return weights * np.power(dt, alpha)
 
+    def _build_xi_t(self, xi_0, T_max):
+        """
+        Construit ξ₀(t) comme fonction piecewise constant sur la grille temporelle.
+        xi_0[0] s'applique sur [0, maturities[0]],
+        xi_0[i] s'applique sur [maturities[i-1], maturities[i]].
+        """
+        maturities = self.model.maturities  # ex: [0.1, 0.3, ..., 2.0]
+        time_grid = np.linspace(0, T_max, self.n_steps)
+        
+        # Pour chaque point de la grille temporelle, trouver l'intervalle correspondant
+        # np.searchsorted donne l'index i tel que maturities[i-1] < t <= maturities[i]
+        # clip à len(xi_0)-1 pour les temps au-delà de la dernière maturité
+        indices = np.searchsorted(maturities, time_grid, side='right')
+        indices = np.clip(indices, 0, len(xi_0) - 1)
+        
+        xi_t = xi_0[indices]  # vecteur de taille n_steps
+        return xi_t
+
     def simulate_paths(self, params):
         """
         Simule les prix S_t et la variance V_t.
@@ -43,8 +61,12 @@ class HybridScheme:
             vol_process[:, t] = np.dot(dW1[:, :t], kernel[:t][::-1])
             
         # Variance V_t (Modèle Log-Normal de Bergomi)
-        # On utilise la moyenne de xi_0 pour simplifier le test
-        V = np.mean(xi_0) * np.exp(nu * np.sqrt(2 * H) * vol_process - 0.5 * (nu**2) * np.power(np.linspace(0, T_max, self.n_steps), 2 * H))
+        # Construction piecewise constant de ξ₀(t) au lieu de np.mean(xi_0)
+        xi_t = self._build_xi_t(xi_0, T_max)  # (n_steps,)
+        V = xi_t[np.newaxis, :] * np.exp(
+            nu * np.sqrt(2 * H) * vol_process
+            - 0.5 * (nu**2) * np.power(np.linspace(0, T_max, self.n_steps), 2 * H)
+        )
         
         # 4. Calcul du Prix S_t
         log_S = np.zeros((self.n_paths, self.n_steps))
