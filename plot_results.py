@@ -87,7 +87,7 @@ def plot_error_heatmaps(model=None, X_norm=None, Y_raw=None,
  
 
 
-    mask = Y_raw > 1e-3
+    mask = Y_raw > 5e-2
     rel_err = np.where(mask,
                     np.abs(Y_pred - Y_raw) / Y_raw,
                     np.nan)
@@ -141,15 +141,21 @@ def plot_smiles(model=None, X_norm=None, Y_raw=None,
     fig, axes = plt.subplots(rows, cols, figsize=(11, 3.3 * rows))
     axes = np.atleast_1d(axes).flatten()
 
+
     for ax, idx in zip(axes, idxs):
         true_smile = Y_raw[idx].reshape(n_T, n_K)[mat_idx]
         pred_smile = Y_pred[idx].reshape(n_T, n_K)[mat_idx]
-        ax.plot(strikes, true_smile, "ko", label="Monte Carlo", markersize=5)
+        mask_vis = true_smile > 5e-2
+        ax.plot(np.asarray(strikes)[mask_vis], true_smile[mask_vis],
+                 "ko", label="Monte Carlo", markersize=5)
         ax.plot(strikes, pred_smile, "r-", label="Neural network")
         ax.set_xlabel("Strike")
         ax.set_ylabel("Implied vol")
         ax.set_title(f"Sample {idx}, T = {maturities[mat_idx]:.2f}")
         ax.legend()
+
+
+
 
     for ax in axes[n_samples:]:
         ax.axis("off")

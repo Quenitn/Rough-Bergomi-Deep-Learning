@@ -21,6 +21,13 @@ def get_device():
         return torch.device("cuda")
     return torch.device("cpu")
 
+def masked_mse(pred, target):
+    mask = ~torch.isnan(target)
+    target_clean = torch.where(mask, target, torch.zeros_like(target))
+    diff = (pred - target_clean)**2
+    # Extra safety : on zero-out les positions qui seraient NaN dans pred aussi
+    diff = torch.where(torch.isnan(diff), torch.zeros_like(diff), diff)
+    return (diff * mask).sum() / mask.sum().clamp(min=1)
 
 def train_model(X_norm, Y_norm, epochs=200, patience=25, batch=32, lr=1e-3,
                 val_split=0.15, seed=42, device=None, verbose=True,
@@ -71,7 +78,7 @@ def train_model(X_norm, Y_norm, epochs=200, patience=25, batch=32, lr=1e-3,
 
     net = VolatilityNet(input_size=X.shape[1], output_size=Y.shape[1]).to(device)
     opt = optim.Adam(net.parameters(), lr=lr)
-    loss_fn = nn.MSELoss()
+    
 
     best_val = float('inf')
     best_state = None
@@ -85,7 +92,7 @@ def train_model(X_norm, Y_norm, epochs=200, patience=25, batch=32, lr=1e-3,
         for xb, yb in train_loader:
             xb, yb = xb.to(device), yb.to(device)
             opt.zero_grad()
-            loss = loss_fn(net(xb), yb)
+            loss = masked_mse(net(xb), yb)
             loss.backward()
             opt.step()
             tr_loss += loss.item() * xb.size(0)
@@ -97,7 +104,7 @@ def train_model(X_norm, Y_norm, epochs=200, patience=25, batch=32, lr=1e-3,
         with torch.no_grad():
             for xb, yb in val_loader:
                 xb, yb = xb.to(device), yb.to(device)
-                val_loss += loss_fn(net(xb), yb).item() * xb.size(0)
+                val_loss += masked_mse(net(xb), yb).item() * xb.size(0)
         val_loss /= n_val
 
         history['train'].append(tr_loss)
@@ -153,3 +160,4 @@ def predict_denormalized(net, X_norm, y_mean, y_std, device=None, batch=512):
 
     Y_pred_norm = np.concatenate(preds, axis=0)
     return Y_pred_norm * y_std + y_mean
+

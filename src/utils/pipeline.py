@@ -11,24 +11,6 @@ from src.utils.black_scholes import implied_vol
 
 
 def compute_surface_from_prices(prices, maturities, strikes, T_max, n_steps, S0=1.0):
-    """
-    Calcule une surface de vol implicite a partir de trajectoires de prix
-    simulees par Monte Carlo.
-
-    Parameters
-    ----------
-    prices : ndarray, shape (n_paths, n_steps)
-    maturities : array-like
-    strikes : array-like
-    T_max : float
-        Horizon de simulation (en general maturities[-1]).
-    n_steps : int
-    S0 : float
-
-    Returns
-    -------
-    surface : ndarray, shape (len(maturities), len(strikes))
-    """
     dt = T_max / n_steps
     surface = np.zeros((len(maturities), len(strikes)))
 
@@ -36,6 +18,9 @@ def compute_surface_from_prices(prices, maturities, strikes, T_max, n_steps, S0=
         step_idx = int(round(T / dt)) - 1
         step_idx = max(0, min(step_idx, n_steps - 1))
         S_T = prices[:, step_idx]
+        
+        # Control variate : force martingalité E[S_T] = S0
+        S_T = S_T * S0 / S_T.mean()
 
         for j, K in enumerate(strikes):
             payoff = np.maximum(S_T - K, 0.0)
@@ -96,7 +81,9 @@ def generate_dataset(model, n_samples, n_paths=30000, n_steps=100,
             print(f"  {i+1}/{n_samples}")
     
     # Filtrer les surfaces contenant des NaN ou positifs 
-    valid = ~np.isnan(Y).any(axis=1) & (Y > 0).all(axis=1)
+    # Garde les surfaces avec au plus 20% de NaN
+    max_nans = int(0.2 * Y.shape[1])
+    valid = np.isnan(Y).sum(axis=1) <= max_nans
     n_dropped = (~valid).sum()
     if n_dropped > 0 and verbose:
         print(f"  Dropped {n_dropped} surfaces with invalid implied vols "

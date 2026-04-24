@@ -60,8 +60,8 @@ def normalize_outputs(Y, per_point=True):
     y_std : ndarray ou scalaire
     """
     if per_point:
-        y_mean = Y.mean(axis=0)
-        y_std = Y.std(axis=0) + 1e-12
+        y_mean = np.nanmean(Y, axis=0)
+        y_std = np.nanstd(Y, axis=0) + 1e-12
     else:
         y_mean = np.mean(Y)
         y_std = np.std(Y)
